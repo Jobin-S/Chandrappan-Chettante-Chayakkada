@@ -1407,3 +1407,193 @@ button:disabled {
 .host-panel button.confirm {
   background: var(--terracotta);
 }
+
+/* ======================================================== milestone 5 */
+
+.batch-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.batch-label {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.seg.small button {
+  padding: 6px 14px;
+  font-size: 15px;
+}
+
+.batch-hint {
+  font-size: 13px;
+  opacity: 0.75;
+}
+
+.batch-badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 99px;
+  background: var(--gold);
+  font-size: 15px;
+}
+
+/* ======================================================== multiplayer */
+
+#hud.in-room .toasts {
+  top: 262px;
+}
+
+.hud-room {
+  top: 120px;
+  left: 16px;
+  width: 260px;
+  padding: 8px 12px 10px;
+}
+
+.room-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.room-head .btn-ghost.small {
+  margin: 0 0 0 auto;
+}
+
+.room-code {
+  font-family: var(--head);
+  font-size: 20px;
+  letter-spacing: 0.12em;
+  color: var(--leaf);
+}
+
+.room-players {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  font-size: 14px;
+}
+
+.room-players li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  border-radius: 8px;
+}
+
+.room-players li.speaking {
+  background: rgba(66, 139, 85, 0.18);
+}
+
+.room-players i {
+  opacity: 0.6;
+}
+
+.mic-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: rgba(39, 39, 31, 0.25);
+}
+
+.mic-dot.on {
+  background: var(--success);
+}
+
+.host-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 99px;
+  background: var(--gold);
+}
+
+.hud-btn.mic.on {
+  background: var(--success);
+}
+
+.nametags {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.nametag {
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 3px 10px;
+  border-radius: 99px;
+  background: rgba(39, 39, 31, 0.78);
+  color: var(--soft-white);
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+
+.nametag.speaking {
+  background: var(--success);
+  box-shadow: 0 0 0 3px rgba(66, 139, 85, 0.35);
+}
+
+.btn-gold.wide {
+  width: 100%;
+}
+
+.or {
+  margin: 16px 0 8px;
+  text-align: center;
+  font-size: 13px;
+  opacity: 0.7;
+}
+
+.join-row {
+  display: flex;
+  gap: 8px;
+}
+
+.text-input.code {
+  text-transform: uppercase;
+  letter-spacing: 0.25em;
+  font-weight: 700;
+  font-size: 20px;
+  text-align: center;
+}
+
+.status {
+  min-height: 20px;
+  margin: 10px 0 0;
+  font-weight: 600;
+  color: var(--leaf);
+}
+
+.status.bad {
+  color: var(--terracotta);
+}
+
+.muted.small {
+  font-size: 12px;
+}
+
+.room-big {
+  font-size: 30px;
+  letter-spacing: 0.14em;
+  color: var(--wood);
+}
+
+.lobby-players {
+  margin: 14px 0;
+  padding-left: 20px;
+  font-size: 16px;
+  line-height: 1.7;
+}
+
+.waiting-host {
+  text-align: center;
+  font-weight: 600;
+}

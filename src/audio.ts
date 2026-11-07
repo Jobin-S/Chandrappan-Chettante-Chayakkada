@@ -19,7 +19,9 @@ export type Sfx =
   | 'bad'
   | 'bell'
   | 'upgrade'
-  | 'rush';
+  | 'rush'
+  | 'horn'
+  | 'brake';
 
 const MASTER = 0.32;
 
@@ -35,6 +37,11 @@ export class AudioEngine {
 
   get muted() {
     return this._muted;
+  }
+
+  /** Shared AudioContext (created on the first user gesture). */
+  get context(): AudioContext | null {
+    return this.ctx;
   }
 
   /** Call from a click handler (browsers block audio before a gesture). */
@@ -208,6 +215,19 @@ export class AudioEngine {
         break;
       case 'upgrade':
         [523, 659, 784, 1047].forEach((f, i) => this.tone(f, t + i * 0.09, 0.35, 'triangle', 0.13));
+        break;
+      case 'horn':
+        // the classic two-tone bus horn, kept soft
+        for (const [f, d] of [
+          [392, 0],
+          [494, 0],
+          [392, 0.32],
+          [494, 0.32],
+        ])
+          this.tone(f, t + d, 0.24, 'sawtooth', 0.035);
+        break;
+      case 'brake':
+        this.burst(t, 0.6, 'highpass', 2500, 0.08, 6000);
         break;
       case 'rush':
         [392, 523, 392, 523, 659].forEach((f, i) => this.tone(f, t + i * 0.1, 0.14, 'square', 0.06));

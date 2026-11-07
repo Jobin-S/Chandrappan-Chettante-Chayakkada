@@ -237,3 +237,63 @@ export function calendarTexture(): THREE.CanvasTexture {
     }
   });
 }
+
+export function busStopTexture(): THREE.CanvasTexture {
+  return canvasTexture(256, 256, (ctx, w, h) => {
+    ctx.fillStyle = PALETTE.gold;
+    ctx.beginPath();
+    ctx.arc(w / 2, h / 2, w / 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = PALETTE.leaf;
+    ctx.beginPath();
+    ctx.arc(w / 2, h / 2, w / 2 - 16, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = PALETTE.softWhite;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `bold 44px ${HEAD}`;
+    ctx.fillText('BUS', w / 2, 96);
+    ctx.fillText('STOP', w / 2, 146);
+    ctx.font = `600 22px ${MAL}`;
+    ctx.fillText('ബസ് സ്റ്റോപ്പ്', w / 2, 196);
+  });
+}
+
+/** Bus destination board: amber letters on black. */
+export function destinationTexture(text: string, mal: string): THREE.CanvasTexture {
+  return canvasTexture(512, 96, (ctx, w, h) => {
+    ctx.fillStyle = '#1B1B16';
+    ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = '#FFB13B';
+    ctx.textBaseline = 'middle';
+    ctx.font = `bold 48px ${HEAD}`;
+    ctx.textAlign = 'left';
+    ctx.fillText(text, 20, h / 2 + 2);
+    ctx.font = `600 34px ${MAL}`;
+    ctx.textAlign = 'right';
+    ctx.fillText(mal, w - 20, h / 2 + 2);
+  });
+}
+
+/** A fictional local newspaper page. */
+export function newspaperTexture(): THREE.CanvasTexture {
+  return canvasTexture(256, 180, (ctx, w, h) => {
+    ctx.fillStyle = '#EFE9DA';
+    ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = PALETTE.charcoal;
+    ctx.textAlign = 'center';
+    ctx.font = `bold 22px Georgia, serif`;
+    ctx.fillText('MUNNAR VARTHA', w / 2, 24);
+    ctx.font = `600 13px ${MAL}`;
+    ctx.fillText('മൂന്നാർ വാർത്ത', w / 2, 42);
+    ctx.fillRect(10, 50, w - 20, 2);
+    ctx.font = `bold 15px Georgia, serif`;
+    ctx.textAlign = 'left';
+    ctx.fillText('Mazha thudarum!', 12, 70);
+    ctx.fillStyle = '#9A9486';
+    ctx.fillRect(12, 80, 100, 64);
+    ctx.fillStyle = 'rgba(39,39,31,0.55)';
+    for (let i = 0; i < 9; i++) ctx.fillRect(122, 80 + i * 8, w - 134 - (i % 3) * 10, 3);
+    for (let i = 0; i < 3; i++) ctx.fillRect(12, 152 + i * 8, w - 24 - i * 20, 3);
+  });
+}

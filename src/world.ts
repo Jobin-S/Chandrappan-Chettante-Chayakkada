@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { PALETTE, TONES } from './palette';
 import { G, addOutline, group, part, rng, toon, toonUnique } from './toon';
 import { Mist } from './effects';
-import { milestoneTexture } from './textures';
+import { busStopTexture, milestoneTexture } from './textures';
+import { BUS_STOP, ROAD } from './layout';
 
 /** Munnar surroundings: tea-garden hillside, road, trees, mountains and mist. */
 
@@ -22,7 +23,7 @@ export function terrainHeight(x: number, z: number): number {
     h += Math.sin(x * 0.11 + 1.3) * 0.9 * smooth(d / 14);
     h += Math.sin(x * 0.27 + z * 0.13) * 0.45 * smooth(d / 10);
   }
-  const f = z - 8.6;
+  const f = z - ROAD.valleyZ;
   if (f > 0) h -= f * 0.32 + Math.sin(x * 0.15) * 0.4 * smooth(f / 6);
   return h;
 }
@@ -119,14 +120,17 @@ function buildRoad(scene: THREE.Scene) {
   // red laterite shoulder + shop yard
   flat(60, 2.6, TONES.soil, [0, 0.012, 3.15]);
   flat(9.2, 6.2, TONES.soil, [0, 0.01, -0.3]);
-  // wet asphalt
-  flat(140, 3.4, TONES.asphalt, [0, 0.025, 6.0]);
-  flat(140, 0.08, '#D9D2BE', [0, 0.03, 4.45]);
-  flat(140, 0.08, '#D9D2BE', [0, 0.03, 7.55]);
+  // wet asphalt with edge lines, plus a far-side footpath
+  const z0 = ROAD.center - ROAD.width / 2;
+  const z1 = ROAD.center + ROAD.width / 2;
+  flat(140, ROAD.width, TONES.asphalt, [0, 0.025, ROAD.center]);
+  flat(140, 0.08, '#D9D2BE', [0, 0.03, z0 + 0.06]);
+  flat(140, 0.08, '#D9D2BE', [0, 0.03, z1 - 0.06]);
+  flat(140, ROAD.valleyZ - z1, '#9E6A4A', [0, 0.012, (z1 + ROAD.valleyZ) / 2]);
   const dashes = new THREE.InstancedMesh(G.plane(1.2, 0.1), toon(PALETTE.cream), 46);
   const m = new THREE.Matrix4();
   for (let i = 0; i < 46; i++) {
-    m.makeRotationX(-Math.PI / 2).setPosition(-69 + i * 3, 0.032, 6.0);
+    m.makeRotationX(-Math.PI / 2).setPosition(-69 + i * 3, 0.032, ROAD.center);
     dashes.setMatrixAt(i, m);
   }
   dashes.receiveShadow = true;
@@ -134,9 +138,9 @@ function buildRoad(scene: THREE.Scene) {
   // puddles
   const puddles: [number, number, number, number][] = [
     [-1.6, 3.5, 0.9, 0.45],
-    [3.6, 5.3, 1.2, 0.5],
-    [-4.9, 6.5, 1.0, 0.4],
-    [1.2, 7.0, 0.8, 0.35],
+    [3.6, 5.6, 1.2, 0.5],
+    [-4.9, 6.9, 1.0, 0.4],
+    [1.2, 7.6, 0.8, 0.35],
     [6.2, 3.2, 0.7, 0.4],
   ];
   for (const [x, z, sx, sz] of puddles) {
@@ -238,7 +242,7 @@ function buildNature(scene: THREE.Scene, rand: () => number) {
 
 function buildRoadside(scene: THREE.Scene) {
   // Kerala milestone
-  const stone = group(scene, [-5.3, 0, 4.15], [0, 0.35, 0]);
+  const stone = group(scene, [8.4, 0, 3.4], [0, -0.35, 0]);
   part(stone, G.box(0.42, 0.55, 0.16), toon(PALETTE.softWhite), { pos: [0, 0.275, 0] });
   part(stone, G.cyl(0.21, 0.21, 0.16, 16, false, Math.PI / 2, Math.PI), toon(PALETTE.gold), {
     pos: [0, 0.55, 0],
@@ -247,8 +251,10 @@ function buildRoadside(scene: THREE.Scene) {
   part(stone, G.plane(0.4, 0.5), toonUnique('#ffffff', { map: milestoneTexture() }), { pos: [0, 0.3, 0.081], outline: false });
   addOutline(stone);
 
+  buildBusShelter(scene);
+
   // electric pole and drooping wires
-  const pole = group(scene, [11.5, 0, 4.4]);
+  const pole = group(scene, [11.5, 0, 3.4]);
   part(pole, G.cyl(0.07, 0.11, 7, 6), toon('#A8A79A'), { pos: [0, 3.5, 0] });
   part(pole, G.box(0.08, 0.08, 1.2), toon('#7A7A70'), { pos: [0, 6.6, 0] });
   for (const z of [-0.5, 0.5]) part(pole, G.cyl(0.03, 0.03, 0.1, 6), toon(PALETTE.softWhite), { pos: [0, 6.7, z] });
@@ -256,12 +262,36 @@ function buildRoadside(scene: THREE.Scene) {
   const wireMat = new THREE.LineBasicMaterial({ color: PALETTE.charcoal });
   for (const dz of [-0.5, 0.5]) {
     for (const dir of [-1, 1]) {
-      const a = new THREE.Vector3(11.5, 6.72, 4.4 + dz);
-      const b = new THREE.Vector3(11.5 + dir * 45, 6.4, 4.6 + dz);
+      const a = new THREE.Vector3(11.5, 6.72, 3.4 + dz);
+      const b = new THREE.Vector3(11.5 + dir * 45, 6.4, 3.6 + dz);
       const mid = a.clone().lerp(b, 0.5);
       mid.y -= 1.6;
       const curve = new THREE.QuadraticBezierCurve3(a, mid, b);
       scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(curve.getPoints(30)), wireMat));
     }
   }
+}
+
+/** A Kerala roadside bus shelter: concrete slab roof, painted back wall, bench and a stop sign. */
+function buildBusShelter(scene: THREE.Scene) {
+  const g = group(scene, [BUS_STOP.x, 0, BUS_STOP.z]);
+  const concrete = toon('#B9B4A6');
+  const wall = toon('#E9DDC4');
+  part(g, G.box(2.6, 0.12, 1.4), concrete, { pos: [0, 0.06, 0] });
+  part(g, G.box(2.5, 2.1, 0.14), wall, { pos: [0, 1.17, -0.62] });
+  part(g, G.box(2.52, 0.32, 0.15), toon(PALETTE.leaf), { pos: [0, 1.75, -0.615], outline: false });
+  part(g, G.box(2.52, 0.08, 0.15), toon(PALETTE.gold), { pos: [0, 1.55, -0.615], outline: false });
+  for (const x of [-1.15, 1.15]) part(g, G.box(0.14, 2.25, 0.14), concrete, { pos: [x, 1.18, 0.5] });
+  part(g, G.box(2.9, 0.14, 1.65), concrete, { pos: [0, 2.36, -0.02], rot: [0.06, 0, 0] });
+  part(g, G.box(2.0, 0.07, 0.42), toon(TONES.woodLight), { pos: [0, 0.48, -0.3] });
+  for (const x of [-0.85, 0.85]) part(g, G.box(0.08, 0.42, 0.36), concrete, { pos: [x, 0.25, -0.3] });
+  // stop sign on a post by the kerb
+  const sign = group(scene, [BUS_STOP.x - 1.8, 0, ROAD.walkNear - 0.3]);
+  part(sign, G.cyl(0.035, 0.035, 2.3, 8), toon(TONES.steelDark), { pos: [0, 1.15, 0] });
+  part(sign, G.cyl(0.32, 0.32, 0.04, 24), toonUnique('#ffffff', { map: busStopTexture() }), {
+    pos: [0, 2.35, 0],
+    rot: [Math.PI / 2, 0, 0],
+  });
+  addOutline(g);
+  addOutline(sign);
 }

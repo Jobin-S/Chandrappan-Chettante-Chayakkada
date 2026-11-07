@@ -19,11 +19,18 @@ export interface ResultsView {
   money: number;
   nextQuota: number;
   owned: Set<UpgradeId>;
+  /** False for multiplayer guests – only the host buys upgrades and starts the next day. */
+  canAct?: boolean;
 }
 
 export interface ScreenHandlers {
   onStart(): void;
   onContinue(): void;
+  onMulti(): void;
+  onCreateRoom(name: string): void;
+  onJoinRoom(code: string, name: string): void;
+  onLobbyContinue(): void;
+  onLeaveRoom(): void;
   onOpenShop(p: Profile): void;
   onBackToMenu(): void;
   onPreview(p: Profile): void;
@@ -63,6 +70,7 @@ export class Screens {
         <div class="title-actions">
           ${savedDay ? `<button class="btn-primary big" data-go="continue">Continue · Day ${savedDay}</button>` : ''}
           <button class="btn-gold big" data-go="start">${savedDay ? 'New shop' : 'Thudangam!'}</button>
+          <button class="btn-primary" data-go="multi">Play with friends 🎙</button>
           <div class="title-row">
             <button class="btn-ghost" data-go="howto">How to Play</button>
             <button class="btn-ghost" data-go="settings">Settings</button>
@@ -143,9 +151,10 @@ export class Screens {
   showResults(v: ResultsView) {
     this.results = v;
     this.root.className = 'screens results';
+    const canAct = v.canAct !== false;
     const card = (u: UpgradeDef) => {
       const owned = v.owned.has(u.id);
-      const afford = v.money >= u.cost;
+      const afford = v.money >= u.cost && canAct;
       return `<div class="upgrade ${owned ? 'owned' : ''}">
         <div class="upgrade-name">${u.name}</div>
         <div class="upgrade-effect">${u.effect}</div>
@@ -167,7 +176,11 @@ export class Screens {
         </dl>
         <h3>Shop upgrades</h3>
         <div class="upgrades">${UPGRADES.map(card).join('')}</div>
-        <button class="btn-gold big" data-go="next">Adutha Divasam! <small>(${v.nextQuota} customers)</small></button>
+        ${
+          canAct
+            ? `<button class="btn-gold big" data-go="next">Adutha Divasam! <small>(${v.nextQuota} customers)</small></button>`
+            : `<p class="muted waiting-host">The host picks upgrades and opens the next day…</p>`
+        }
       </div>`;
   }
 
@@ -218,6 +231,23 @@ export class Screens {
         return this.h.onStart();
       case 'continue':
         return this.h.onContinue();
+      case 'multi':
+        return this.h.onMulti();
+      case 'create':
+        return this.h.onCreateRoom(this.nameValue());
+      case 'join': {
+        const code = (this.root.querySelector<HTMLInputElement>('[data-field="code"]')?.value ?? '').trim().toUpperCase();
+        return this.h.onJoinRoom(code, this.nameValue());
+      }
+      case 'lobby-continue':
+        return this.h.onLobbyContinue();
+      case 'leave':
+        return this.h.onLeaveRoom();
+      case 'copy': {
+        const link = b.dataset.link ?? '';
+        void navigator.clipboard?.writeText(link).then(() => (b.textContent = 'Copied!'));
+        return;
+      }
       case 'howto':
         return this.showHowTo();
       case 'settings':
@@ -238,6 +268,64 @@ export class Screens {
         return this.h.onNextDay();
     }
   };
+
+  private nameValue(): string {
+    return (this.root.querySelector<HTMLInputElement>('[data-field="playerName"]')?.value ?? '').trim().slice(0, 18);
+  }
+
+  /** Multiplayer: create a room or join one with a code. */
+  showMulti(name: string, code = '', status = '', busy = false) {
+    this.root.className = 'screens customize';
+    this.root.innerHTML = `
+      <div class="side-card">
+        <h2>Play with friends</h2>
+        <p class="muted">Up to 4 cooks share one chayakkada. Talk with your mic – voices get quieter the further apart you stand.</p>
+        <label class="field">
+          <span class="field-label">Your name</span>
+          <input class="text-input" data-field="playerName" maxlength="18" placeholder="Ammu, Kuttan…" value="${esc(name)}" />
+        </label>
+        <div class="field">
+          <button class="btn-gold big wide" data-go="create" ${busy ? 'disabled' : ''}>Create a room</button>
+        </div>
+        <div class="or">or join a friend</div>
+        <div class="join-row">
+          <input class="text-input code" data-field="code" maxlength="4" placeholder="CODE" value="${esc(code)}" />
+          <button class="btn-primary" data-go="join" ${busy ? 'disabled' : ''}>Join</button>
+        </div>
+        <p class="status ${status.startsWith('!') ? 'bad' : ''}">${esc(status.replace(/^!/, ''))}</p>
+        <p class="muted small">Tip: use headphones so your mic doesn't pick up the game.</p>
+        <div class="side-actions"><button class="btn-ghost" data-go="back">Back</button></div>
+      </div>`;
+  }
+
+  /** Host lobby: share the code, see who joined, then set up the shop. */
+  showLobbyHost(code: string, players: string[], link: string, warn = '') {
+    this.root.className = 'screens customize';
+    this.root.innerHTML = `
+      <div class="side-card">
+        <h2>Room <span class="room-big">${esc(code)}</span></h2>
+        <p class="muted">Tell your friends this code, or send them the link.</p>
+        <button class="btn-ghost small" data-go="copy" data-link="${esc(link)}">Copy invite link</button>
+        <ul class="lobby-players">${players.map((p) => `<li>${esc(p)}</li>`).join('')}</ul>
+        ${warn ? `<p class="status bad">${esc(warn)}</p>` : ''}
+        <div class="side-actions">
+          <button class="btn-ghost" data-go="leave">Close room</button>
+          <button class="btn-gold big" data-go="lobby-continue">Set up the shop</button>
+        </div>
+      </div>`;
+  }
+
+  /** Guest lobby: connected, waiting for the host. */
+  showLobbyGuest(code: string, status: string) {
+    this.root.className = 'screens customize';
+    this.root.innerHTML = `
+      <div class="side-card">
+        <h2>Room <span class="room-big">${esc(code)}</span></h2>
+        <p>${esc(status)}</p>
+        <p class="muted">Press <b>T</b> to turn your mic on once you're in. Walk close to someone to hear them clearly.</p>
+        <div class="side-actions"><button class="btn-ghost" data-go="leave">Leave room</button></div>
+      </div>`;
+  }
 
   /** Settings on the menu need the current profile. */
   setProfile(p: Profile) {

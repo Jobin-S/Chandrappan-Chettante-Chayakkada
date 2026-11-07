@@ -54,8 +54,9 @@ export function buildUpgrade(id: UpgradeId, floor: number, hearthTop: number): U
       });
     }
     for (const s of [-1, 1]) {
-      part(root, G.cyl(0.04, 0.05, AWNING.y1, 8), toon(TONES.woodDark), { pos: [s * 3.62, AWNING.y1 / 2, AWNING.z1 - 0.05] });
-      part(root, G.sphere(0.06, 8, 6), toon(PALETTE.gold), { pos: [s * 3.62, AWNING.y1 + 0.03, AWNING.z1 - 0.05] });
+      // poles stand back from the footpath so walkers pass in front of them
+      part(root, G.cyl(0.04, 0.05, 3.46, 8), toon(TONES.woodDark), { pos: [s * 3.62, 1.73, 3.6] });
+      part(root, G.sphere(0.06, 8, 6), toon(PALETTE.gold), { pos: [s * 3.62, 3.48, 3.6] });
     }
     addOutline(root);
   }
@@ -80,7 +81,7 @@ export function buildUpgrade(id: UpgradeId, floor: number, hearthTop: number): U
   }
 
   if (id === 'seating') {
-    const set = group(root, [4.8, 0, -1.25]);
+    const set = group(root, [5.05, 0, 2.5]);
     const wood = toon(TONES.woodLight);
     part(set, G.cyl(0.46, 0.46, 0.05, 24), wood, { pos: [0, 0.74, 0] });
     part(set, G.cyl(0.05, 0.07, 0.72, 10), toon(PALETTE.wood), { pos: [0, 0.36, 0] });
@@ -99,7 +100,7 @@ export function buildUpgrade(id: UpgradeId, floor: number, hearthTop: number): U
     part(set, G.cyl(0.025, 0.025, 2.4, 8), toon(TONES.steelDark), { pos: [0, 1.6, 0] });
     const canopy = group(set, [0, 2.55, 0]);
     for (let i = 0; i < 8; i++) {
-      part(canopy, G.cyl(0, 1.25, 0.45, 1, false, (i / 8) * Math.PI * 2, Math.PI / 4), toon(i % 2 ? PALETTE.gold : PALETTE.leaf, { side: THREE.DoubleSide }), {
+      part(canopy, G.cyl(0, 1.05, 0.4, 1, false, (i / 8) * Math.PI * 2, Math.PI / 4), toon(i % 2 ? PALETTE.gold : PALETTE.leaf, { side: THREE.DoubleSide }), {
         outline: false,
       });
     }

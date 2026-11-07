@@ -1,5 +1,5 @@
 import { CookMode, RECIPES, RecipeId, actionsFor, recipesAt } from './recipes';
-import type { CookingSession } from './cooking';
+import { BATCH_SIZES, CookingSession } from './cooking';
 import type { Station } from './types';
 import { foodIcon } from './icons';
 
@@ -13,6 +13,7 @@ export interface PanelHandlers {
   onClose(): void;
   onMode(mode: CookMode): void;
   onGoTo(stationId: string): void;
+  onBatch(n: number): void;
 }
 
 export interface PanelView {
@@ -24,6 +25,10 @@ export interface PanelView {
   busyAt: { id: string; name: string } | null;
   wanted: Partial<Record<RecipeId, number>>;
   counterFull: boolean;
+  /** Portions per cook (bulk cooking). */
+  batch: number;
+  /** Another player is cooking at this station. */
+  lockedBy?: string | null;
 }
 
 export class CookingPanel {
@@ -102,6 +107,11 @@ export class CookingPanel {
           <p>Chandrappan is busy at the <b>${view.busyAt.name}</b>. Only one dish at a time!</p>
           <button class="btn-primary" data-goto="${view.busyAt.id}">Go to ${view.busyAt.name}</button>
         </div>`;
+    } else if (!session && view.lockedBy) {
+      body = `
+        <div class="cook-busy">
+          <p><b>${view.lockedBy}</b> is cooking at this station. Pick another one, or wait for them to finish!</p>
+        </div>`;
     } else if (!session) {
       const cards = recipesAt(station.id)
         .map((r) => {
@@ -114,7 +124,12 @@ export class CookingPanel {
           </button>`;
         })
         .join('');
-      body = `<div class="recipe-grid">${cards}</div>
+      const batch = `<div class="batch-row"><span class="batch-label">Batch</span><div class="seg small">${BATCH_SIZES.map(
+        (n) => `<button data-batch="${n}" class="${view.batch === n ? 'on' : ''}">×${n}</button>`,
+      ).join('')}</div><span class="batch-hint">${
+        view.batch > 1 ? `Makes ${view.batch} portions — serve several customers in one go.` : 'Cook one at a time, or a batch for busy moments.'
+      }</span></div>`;
+      body = `${batch}<div class="recipe-grid">${cards}</div>
         <div class="cook-msg ${this.messageKind}">${this.message || 'What shall we make?'}</div>`;
     } else {
       const r = session.recipe;
@@ -140,7 +155,7 @@ export class CookingPanel {
           <div class="cook-dish">
             ${foodIcon(r.id, 64)}
             <div>
-              <div class="dish-name">${r.name} <span class="dish-price">₹${r.price}</span></div>
+              <div class="dish-name">${r.name}${session.batch > 1 ? ` <span class="batch-badge">×${session.batch}</span>` : ''} <span class="dish-price">₹${r.price}</span></div>
               <div class="dish-step">${session.done ? 'Ready to collect!' : `Step ${session.index + 1} of ${session.steps.length}`}</div>
             </div>
           </div>
@@ -153,7 +168,7 @@ export class CookingPanel {
         <footer class="cook-foot">
           <button class="btn-ghost" data-discard>Discard</button>
           <button class="btn-gold" data-collect ${session.done ? '' : 'disabled'}>${
-            session.done && view.counterFull ? 'Counter full!' : `Collect ${r.name}`
+            session.done && view.counterFull ? 'Counter full!' : `Collect ${r.name}${session.batch > 1 ? ` ×${session.batch}` : ''}`
           }</button>
         </footer>`;
     }
@@ -179,6 +194,7 @@ export class CookingPanel {
     else if ('discard' in d) this.h.onDiscard();
     else if ('close' in d) this.h.onClose();
     else if (d.goto) this.h.onGoTo(d.goto);
+    else if (d.batch) this.h.onBatch(Number(d.batch));
   };
 }
 

@@ -12,6 +12,8 @@ export interface Profile {
   mode: CookMode;
   view: ViewPreference;
   muted: boolean;
+  /** Your name in multiplayer rooms. */
+  playerName: string;
 }
 
 export const DEFAULT_PROFILE: Profile = {
@@ -22,6 +24,7 @@ export const DEFAULT_PROFILE: Profile = {
   mode: 'simple',
   view: 'fp',
   muted: false,
+  playerName: '',
 };
 
 const KEY = 'chayakkada.profile.v1';

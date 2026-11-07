@@ -73,14 +73,26 @@ export function createFood(id: RecipeId): THREE.Group {
 export interface CounterItem {
   uid: number;
   recipe: RecipeId;
+  /** Group holding all portions (plus a tray for drink batches). */
   model: THREE.Group;
+  portions: THREE.Group[];
   slot: number;
   held: boolean;
   appear: number;
 }
 
+const DRINKS: RecipeId[] = ['chaya', 'kattan', 'coffee'];
+const CLUSTER: [number, number][] = [
+  [0, 0],
+  [0.11, 0.07],
+  [-0.11, 0.07],
+  [0.07, -0.1],
+  [-0.07, -0.1],
+];
+
 let uid = 1;
 
+/** Up to three dishes (or bulk batches) waiting on the counter. */
 export class ServingCounter {
   readonly items: (CounterItem | null)[];
 
@@ -99,22 +111,69 @@ export class ServingCounter {
     return this.items.filter((x): x is CounterItem => !!x);
   }
 
-  place(recipe: RecipeId): CounterItem | null {
+  /** Place a batch: drinks cluster on a tray, plates stack up. */
+  place(recipe: RecipeId, count = 1): CounterItem | null {
     const slot = this.items.indexOf(null);
     if (slot < 0) return null;
-    const model = createFood(recipe);
+    return this.placeAt(slot, recipe, count);
+  }
+
+  /** Guests: rebuild a host item in a specific slot with the host's id. */
+  placeAt(slot: number, recipe: RecipeId, count: number, id?: number): CounterItem {
+    if (this.items[slot]) this.remove(this.items[slot]!);
+    const model = new THREE.Group();
+    model.name = `batch:${recipe}`;
+    const drink = DRINKS.includes(recipe);
+    if (drink && count > 1) {
+      part(model, G.cyl(0.21, 0.2, 0.018, 24), toon(TONES.steel), { pos: [0, 0.009, 0] });
+    }
+    const portions: THREE.Group[] = [];
+    for (let i = 0; i < count; i++) {
+      const f = createFood(recipe);
+      if (count > 1) f.scale.setScalar(0.85);
+      if (drink) {
+        const [x, z] = CLUSTER[i % CLUSTER.length];
+        f.position.set(count > 1 ? x : 0, count > 1 ? 0.018 : 0, count > 1 ? z : 0);
+      } else {
+        f.position.set(0, i * 0.045, 0);
+        f.rotation.y = i * 0.55;
+      }
+      model.add(f);
+      portions.push(f);
+    }
     model.position.copy(this.slots[slot]);
     model.scale.setScalar(0.01);
     this.parent.add(model);
-    const item: CounterItem = { uid: uid++, recipe, model, slot, held: false, appear: 0 };
+    const item: CounterItem = { uid: id ?? uid++, recipe, model, portions, slot, held: false, appear: 0 };
     this.items[slot] = item;
     return item;
   }
 
-  /** Remove from the counter (the model stays where it is for animations). */
-  take(item: CounterItem) {
+  count(item: CounterItem): number {
+    return item.portions.length;
+  }
+
+  /** Hand over one portion (keeps its world position for the serve animation). */
+  takeOne(item: CounterItem): { portion: THREE.Group; emptied: boolean } {
+    const portion = item.portions.pop()!;
+    this.parent.attach(portion);
+    const emptied = item.portions.length === 0;
+    if (emptied) {
+      if (this.items[item.slot] === item) this.items[item.slot] = null;
+      this.parent.remove(item.model);
+      item.held = false;
+    }
+    return { portion, emptied };
+  }
+
+  /** Guests: drop portions until the batch matches the host's count. */
+  setCount(item: CounterItem, n: number) {
+    while (item.portions.length > Math.max(0, n)) item.model.remove(item.portions.pop()!);
+  }
+
+  remove(item: CounterItem) {
+    this.parent.remove(item.model);
     if (this.items[item.slot] === item) this.items[item.slot] = null;
-    item.held = false;
   }
 
   clear() {

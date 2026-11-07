@@ -34,12 +34,16 @@ export interface Hud {
   placeLabel(text: string | null, x?: number, y?: number, visible?: boolean): void;
   setOrders(list: OrderView[]): void;
   setBubbles(list: BubbleView[]): void;
-  setHeld(recipe: RecipeId | null): void;
-  setReady(items: { uid: number; recipe: RecipeId; held: boolean }[]): void;
+  setHeld(recipe: RecipeId | null, count?: number): void;
+  setReady(items: { uid: number; recipe: RecipeId; held: boolean; count: number }[]): void;
   toast(text: string, kind?: 'info' | 'good' | 'bad' | 'gold'): void;
   floatText(text: string, x: number, y: number, kind?: 'gold' | 'bad'): void;
-  setPaused(paused: boolean): void;
-  showGameOver(stats: GameOverStats | null): void;
+  setPaused(paused: boolean, canResume?: boolean): void;
+  showGameOver(stats: GameOverStats | null, canRestart?: boolean): void;
+  /** Multiplayer: room code, players and mic state. Null hides it. */
+  setRoom(room: RoomView | null): void;
+  setMic(on: boolean, available: boolean): void;
+  setNameTags(tags: NameTag[]): void;
   setPanelOpen(open: boolean): void;
   setVisible(visible: boolean): void;
   setViewMode(firstPerson: boolean): void;
@@ -47,6 +51,23 @@ export interface Hud {
   setEvent(text: string | null, frac?: number): void;
   /** Container for the cooking panel. */
   layer: HTMLElement;
+}
+
+export interface RoomView {
+  code: string;
+  host: boolean;
+  players: { name: string; me: boolean; host: boolean; speaking: boolean; mic: boolean }[];
+}
+
+export interface NameTag {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+  visible: boolean;
+  speaking: boolean;
+  /** 0…1 how loud they are to you (proximity). */
+  near: number;
 }
 
 export interface HudActions {
@@ -60,7 +81,11 @@ export interface HudActions {
   onToggleView(): void;
   onLook(where: 'counter' | 'kitchen'): void;
   onToggleMute(): void;
+  onToggleMic(): void;
+  onLeaveRoom(): void;
 }
+
+const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
 const barColor = (f: number) => (f > 0.5 ? 'var(--success)' : f > 0.25 ? 'var(--gold)' : 'var(--terracotta)');
 
@@ -86,6 +111,7 @@ export function createHud(root: HTMLElement, actions: HudActions): Hud {
 
     <section class="hud-actions" aria-label="Controls">
       <button class="hud-btn" data-act="pause" title="Pause (P)">❚❚</button>
+      <button class="hud-btn wide mic" data-act="mic" data-el="micBtn" title="Microphone (T)" hidden>🎙 Off</button>
       <button class="hud-btn" data-act="mute" data-el="muteBtn" title="Mute (M)">♪</button>
       <button class="hud-btn wide" data-act="view" data-el="viewBtn" title="Switch camera (V)">Overview</button>
       <button class="hud-btn" data-act="reset" title="Reset camera (R)">⟲</button>
@@ -103,6 +129,8 @@ export function createHud(root: HTMLElement, actions: HudActions): Hud {
       <div class="ready" data-el="ready"></div>
     </section>
 
+    <section class="hud-card hud-room" data-el="room" hidden></section>
+    <div class="nametags" data-el="nametags"></div>
     <div class="bubbles" data-el="bubbles"></div>
     <div class="floaters" data-el="floaters"></div>
     <div class="panel-layer" data-el="panelLayer"></div>
@@ -118,8 +146,8 @@ export function createHud(root: HTMLElement, actions: HudActions): Hud {
     <div class="overlay" data-el="pause" hidden>
       <div class="overlay-card">
         <h2>Chaya break ☕</h2>
-        <p>The shop is paused. Customers will wait.</p>
-        <button class="btn-primary" data-act="resume">Resume</button>
+        <p data-el="pauseText">The shop is paused. Customers will wait.</p>
+        <button class="btn-primary" data-act="resume" data-el="resumeBtn">Resume</button>
       </div>
     </div>
     <div class="overlay" data-el="gameover" hidden>
@@ -129,7 +157,7 @@ export function createHud(root: HTMLElement, actions: HudActions): Hud {
         <dl class="stats" data-el="goStats"></dl>
         <div class="modal-actions center">
           <button class="btn-ghost" data-act="menu">Main Menu</button>
-          <button class="btn-primary" data-act="restart">Try Again</button>
+          <button class="btn-primary" data-act="restart" data-el="restartBtn">Try Again</button>
         </div>
       </div>
     </div>
@@ -142,6 +170,7 @@ export function createHud(root: HTMLElement, actions: HudActions): Hud {
   const bubblesEl = el('bubbles');
   const orderRows = new Map<number, HTMLElement>();
   const bubbleEls = new Map<number, HTMLElement>();
+  const nameEls = new Map<string, HTMLElement>();
   let lastStats: HudStats | null = null;
 
   root.addEventListener('click', (e) => {
@@ -156,6 +185,8 @@ export function createHud(root: HTMLElement, actions: HudActions): Hud {
       if (act === 'menu') actions.onMainMenu();
       if (act === 'view') actions.onToggleView();
       if (act === 'mute') actions.onToggleMute();
+      if (act === 'mic') actions.onToggleMic();
+      if (act === 'leave') actions.onLeaveRoom();
       if (act === 'look-counter') actions.onLook('counter');
       if (act === 'look-kitchen') actions.onLook('kitchen');
       return;
@@ -260,10 +291,10 @@ export function createHud(root: HTMLElement, actions: HudActions): Hud {
       }
     },
 
-    setHeld(recipe) {
+    setHeld(recipe, count = 1) {
       const held = el('held');
       held.innerHTML = recipe
-        ? `<div class="held-item">${foodIcon(recipe, 44)}<div><div class="held-name">${RECIPES[recipe].name}</div><div class="held-tip">Click the customer who ordered it</div></div></div>
+        ? `<div class="held-item">${foodIcon(recipe, 44)}<div><div class="held-name">${RECIPES[recipe].name}${count > 1 ? ` ×${count}` : ''}</div><div class="held-tip">${count > 1 ? 'Click each customer who ordered it' : 'Click the customer who ordered it'}</div></div></div>
            <button class="btn-ghost small" data-act="putdown">Put down (Esc)</button>`
         : `<div class="held-tip">Empty. Click ready food on the counter to pick it up.</div>`;
       held.parentElement!.classList.toggle('active', !!recipe);
@@ -272,7 +303,7 @@ export function createHud(root: HTMLElement, actions: HudActions): Hud {
     },
 
     setReady(items) {
-      const key = items.map((i) => `${i.uid}${i.held ? 'h' : ''}`).join(',');
+      const key = items.map((i) => `${i.uid}x${i.count}${i.held ? 'h' : ''}`).join(',');
       const box = el('ready');
       if (box.dataset.key === key) return;
       box.dataset.key = key;
@@ -280,7 +311,7 @@ export function createHud(root: HTMLElement, actions: HudActions): Hud {
         ? `<div class="hud-title">Ready on counter</div><div class="ready-row">${items
             .map(
               (i) =>
-                `<button class="ready-btn ${i.held ? 'on' : ''}" data-act="pick" data-uid="${i.uid}" title="${i.held ? 'Put down' : 'Pick up'} ${RECIPES[i.recipe].name}">${foodIcon(i.recipe, 30)}<span>${RECIPES[i.recipe].name}</span></button>`,
+                `<button class="ready-btn ${i.held ? 'on' : ''}" data-act="pick" data-uid="${i.uid}" title="${i.held ? 'Put down' : 'Pick up'} ${RECIPES[i.recipe].name}">${foodIcon(i.recipe, 30)}<span>${RECIPES[i.recipe].name}${i.count > 1 ? ` ×${i.count}` : ''}</span></button>`,
             )
             .join('')}</div>`
         : '';
@@ -307,14 +338,18 @@ export function createHud(root: HTMLElement, actions: HudActions): Hud {
       setTimeout(() => f.remove(), 1500);
     },
 
-    setPaused(p) {
+    setPaused(p, canResume = true) {
       el('pause').hidden = !p;
+      el('resumeBtn').hidden = !canResume;
+      el('pauseText').textContent = canResume ? 'The shop is paused. Customers will wait.' : 'The host paused the shop. Back in a moment!';
+      (root.querySelector('[data-act="pause"]') as HTMLButtonElement).disabled = !canResume;
       root.querySelector('[data-act="pause"]')!.textContent = p ? '▶' : '❚❚';
     },
 
-    showGameOver(stats) {
+    showGameOver(stats, canRestart = true) {
       el('gameover').hidden = !stats;
       if (!stats) return;
+      el('restartBtn').hidden = !canRestart;
       el('goStats').innerHTML = `
         <dt>Days survived</dt><dd>${stats.days}</dd>
         <dt>Orders completed</dt><dd>${stats.completed}</dd>
@@ -329,6 +364,53 @@ export function createHud(root: HTMLElement, actions: HudActions): Hud {
 
     setVisible(visible) {
       root.classList.toggle('hud-hidden', !visible);
+    },
+
+    setRoom(room) {
+      const card = el('room');
+      card.hidden = !room;
+      root.classList.toggle('in-room', !!room);
+      el('micBtn').hidden = !room;
+      if (!room) return;
+      card.innerHTML = `
+        <div class="room-head"><span class="hud-title">Room</span><b class="room-code">${room.code}</b>
+          <button class="btn-ghost small" data-act="leave">Leave</button></div>
+        <ul class="room-players">${room.players
+          .map(
+            (p) =>
+              `<li class="${p.speaking ? 'speaking' : ''}"><span class="mic-dot ${p.mic ? 'on' : ''}"></span>${escapeHtml(p.name)}${p.me ? ' <i>(you)</i>' : ''}${
+                p.host ? ' <span class="host-badge">host</span>' : ''
+              }</li>`,
+          )
+          .join('')}</ul>`;
+    },
+
+    setMic(on, available) {
+      const b = el('micBtn') as HTMLButtonElement;
+      b.textContent = on ? '🎙 On' : '🎙 Off';
+      b.classList.toggle('on', on);
+      b.disabled = !available;
+    },
+
+    setNameTags(tags) {
+      const box = el('nametags');
+      const keep = new Set(tags.map((t) => t.id));
+      for (const [id, n] of nameEls) if (!keep.has(id)) (n.remove(), nameEls.delete(id));
+      for (const t of tags) {
+        let n = nameEls.get(t.id);
+        if (!n) {
+          n = document.createElement('div');
+          n.className = 'nametag';
+          box.append(n);
+          nameEls.set(t.id, n);
+        }
+        const label = `${t.speaking ? '🔊 ' : ''}${t.name}`;
+        if (n.textContent !== label) n.textContent = label;
+        n.classList.toggle('speaking', t.speaking);
+        n.style.visibility = t.visible ? 'visible' : 'hidden';
+        n.style.opacity = String(0.55 + t.near * 0.45);
+        n.style.transform = `translate(-50%, -100%) translate(${t.x}px, ${t.y}px)`;
+      }
     },
 
     setMuted(m) {

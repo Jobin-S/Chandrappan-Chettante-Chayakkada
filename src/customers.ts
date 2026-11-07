@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { PALETTE, TONES } from './palette';
 import { G, group, limb, part, toon } from './toon';
 import { RECIPES, RecipeId } from './recipes';
+import { ROAD } from './layout';
 
 /** Customer cast, procedural models and the per-customer state machine. */
 
@@ -371,8 +372,8 @@ export function createCustomerModel(look: Look): CustomerModel {
 export type CustomerState = 'arriving' | 'waiting' | 'served' | 'leaving' | 'gone';
 
 const WALK_SPEED = 3.1;
-const ROAD_IN_Z = 6.3;
-const ROAD_OUT_Z = 5.4;
+/** Customers use the shop-side footpath, never the traffic lanes. */
+const WALK_Z = ROAD.walkNear;
 /** Customers stand under the eave; outside it they open umbrellas. */
 const SHELTER_Z = 3.05;
 
@@ -387,6 +388,12 @@ export class Customer {
   wrongCount = 0;
   paid = false;
   resolved = false;
+  /** Current face, mirrored to guests. */
+  mood: Mood = 'neutral';
+  /** Increments on every happy/angry reaction so guests can replay it. */
+  reacts = 0;
+  /** Dish the customer walks away with. */
+  carry: RecipeId | null = null;
   line = '';
   lineTimer = 0;
   private path: THREE.Vector3[] = [];
@@ -405,13 +412,15 @@ export class Customer {
     readonly slotPos: THREE.Vector3,
     patienceMul: number,
     fromSide: number,
+    /** Where they appear (e.g. the bus door); defaults to the end of the footpath. */
+    start?: THREE.Vector3,
   ) {
     this.model = createCustomerModel(type.look);
-    this.model.setMood('neutral');
+    this.setMood('neutral');
     this.patienceMax = this.patience = type.patience * patienceMul;
-    const start = new THREE.Vector3(fromSide * 17, 0, ROAD_IN_Z);
-    this.model.root.position.copy(start);
-    this.path = [new THREE.Vector3(slotPos.x, 0, ROAD_IN_Z), slotPos.clone()];
+    const from = start ? start.clone() : new THREE.Vector3(fromSide * 17, 0, WALK_Z);
+    this.model.root.position.copy(from);
+    this.path = [new THREE.Vector3(from.x, 0, WALK_Z), new THREE.Vector3(slotPos.x, 0, WALK_Z), slotPos.clone()];
     this.facing = fromSide > 0 ? -PI / 2 : PI / 2;
   }
 
@@ -423,6 +432,11 @@ export class Customer {
     return this.state === 'waiting';
   }
 
+  setMood(m: Mood) {
+    this.mood = m;
+    this.model.setMood(m);
+  }
+
   say(text: string, seconds = 4) {
     this.line = text;
     this.lineTimer = seconds;
@@ -430,7 +444,8 @@ export class Customer {
 
   react(kind: 'happy' | 'angry') {
     this.anim = { kind, t: 0 };
-    this.model.setMood(kind);
+    this.reacts++;
+    this.setMood(kind);
   }
 
   /** Walk back to the road and off-screen. */
@@ -438,7 +453,7 @@ export class Customer {
     this.state = happy ? 'served' : 'leaving';
     if (!happy) this.react('angry');
     const side = this.position.x < 0 ? -1 : 1;
-    this.path = [new THREE.Vector3(this.position.x, 0, ROAD_OUT_Z), new THREE.Vector3(side * 18, 0, ROAD_OUT_Z)];
+    this.path = [new THREE.Vector3(this.position.x, 0, WALK_Z), new THREE.Vector3(side * 18, 0, WALK_Z)];
     this.leaveDelay = 1.1;
   }
 
@@ -483,7 +498,7 @@ export class Customer {
       if (frac < 0.3 && !this.impatientSaid) {
         this.impatientSaid = true;
         this.say(this.pickLine('impatient'), 3);
-        m.setMood('worried');
+        this.setMood('worried');
       }
     }
 
@@ -516,7 +531,7 @@ export class Customer {
       }
       if (k > 1.2) {
         this.anim = null;
-        if (this.state === 'waiting') m.setMood(this.patience / this.patienceMax < 0.3 ? 'worried' : 'neutral');
+        if (this.state === 'waiting') this.setMood(this.patience / this.patienceMax < 0.3 ? 'worried' : 'neutral');
       }
     }
   }

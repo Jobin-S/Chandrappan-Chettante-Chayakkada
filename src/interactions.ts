@@ -78,6 +78,10 @@ export class Picker {
   add(p: Pickable) {
     if (this.entries.has(p.key)) return;
     const mat = createOutlineMaterial(PALETTE.charcoal, OUTLINE.base);
+    // re-registered models already carry hulls: hand them the new material
+    p.root.traverse((o) => {
+      if (o.userData.isOutline) (o as THREE.Mesh).material = mat;
+    });
     addOutline(p.root, mat, p.kind === 'item');
     const meshes: THREE.Object3D[] = [];
     p.root.traverse((o) => {

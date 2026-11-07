@@ -63,7 +63,7 @@ export interface Shop {
   shopkeeper: M.Shopkeeper;
   trim: THREE.MeshToonMaterial;
   setRoofOpacity(opacity: number): void;
-  setStationBusy(id: StationId | null): void;
+  setStationsBusy(ids: StationId[]): void;
   /** Roof (and awning, once bought) between camera and target? */
   blocksView(cam: THREE.Vector3, target: THREE.Vector3): boolean;
   setLook(look: ShopLook): void;
@@ -95,13 +95,14 @@ export function buildShop(scene: THREE.Scene): Shop {
   buildShelves(root);
   buildInterior(root);
   buildExterior(root);
+  buildAnnex(root, trim);
   const bulb = buildBulb(root);
   addOutline(root);
 
   // ---- cooking stations (own outline materials, added by the picker)
   const steams: Steam[] = [];
   const stationSteams = new Map<StationId, Steam[]>();
-  let busy: { id: StationId; root: THREE.Object3D } | null = null;
+  let busy: { id: StationId; root: THREE.Object3D }[] = [];
   const station = (
     id: StationId,
     name: string,
@@ -189,11 +190,10 @@ export function buildShop(scene: THREE.Scene): Shop {
     setShopkeeperVisible(visible: boolean) {
       shopkeeper.root.visible = visible;
     },
-    setStationBusy(id: StationId | null) {
-      for (const [sid, list] of stationSteams) for (const st of list) st.intensity = sid === id ? 2.2 : 1;
-      if (busy) busy.root.scale.setScalar(1);
-      const s = id ? stations.find((x) => x.id === id) : undefined;
-      busy = s ? { id: s.id, root: s.root } : null;
+    setStationsBusy(ids: StationId[]) {
+      for (const [sid, list] of stationSteams) for (const st of list) st.intensity = ids.includes(sid) ? 2.2 : 1;
+      for (const b of busy) b.root.scale.setScalar(1);
+      busy = stations.filter((x) => ids.includes(x.id)).map((s) => ({ id: s.id, root: s.root }));
     },
     update(dt: number, t: number) {
       shopkeeper.update(t);
@@ -203,7 +203,7 @@ export function buildShop(scene: THREE.Scene): Shop {
         const k = u.t - 1;
         u.root.scale.setScalar(Math.max(0.01, 1 + 2.7 * k * k * k + 1.7 * k * k)); // ease-out-back
       }
-      if (busy) busy.root.scale.set(1 + Math.sin(t * 18) * 0.012, 1 + Math.sin(t * 18 + 1) * 0.02, 1 + Math.sin(t * 18) * 0.012);
+      for (const b of busy) b.root.scale.set(1 + Math.sin(t * 18) * 0.012, 1 + Math.sin(t * 18 + 1) * 0.02, 1 + Math.sin(t * 18) * 0.012);
       for (const s of steams) s.update(dt, t);
       const flicker = 0.85 + Math.sin(t * 13) * 0.08 + Math.sin(t * 7.3) * 0.07;
       fire.material.color.setRGB(1, 0.45 * flicker + 0.1, 0.15 * flicker);
@@ -524,15 +524,11 @@ function buildInterior(root: THREE.Object3D) {
 // =================================================================== exterior
 
 function buildExterior(root: THREE.Object3D) {
-  const bench = M.createBench(1.8);
-  bench.position.set(4.25, 0, 0.9);
-  root.add(bench);
   const s1 = M.createStool();
   s1.position.set(-4.15, 0, 2.75);
   const s2 = M.createStool();
   s2.position.set(-4.7, 0, 1.65);
   root.add(s1, s2);
-  M.createTeaGlass(bench, [0.05, 0.49, 0.5], 1, true);
 
   // stacked firewood along the left wall
   const log = toon(TONES.woodMid);
@@ -562,7 +558,7 @@ function buildExterior(root: THREE.Object3D) {
   part(bucket, G.torus(0.2, 0.008, 4, 16, Math.PI), toon(PALETTE.charcoal), { pos: [0, 0.33, 0], outline: false });
 
   // chalkboard menu A-frame by the road
-  const sign = group(root, [4.4, 0, 3.95], [0, -0.45, 0]);
+  const sign = group(root, [-2.75, 0, 3.45], [0, 0.35, 0]);
   const board = new THREE.MeshBasicMaterial({ map: menuBoardTexture(), color: '#E6E0D2' });
   const wood = toon(PALETTE.wood);
   for (const s of [1, -1]) {
@@ -589,4 +585,74 @@ function buildBulb(root: THREE.Object3D) {
   light.position.set(0, -drop - 0.16, 0);
   pivot.add(light);
   return { pivot, light };
+}
+
+// ====================================================================== annex
+
+/** Seats for the regulars in the annex and on the front stool. */
+export const REGULAR_SEATS = [
+  { pos: new THREE.Vector3(3.95, 0, -1.25), facing: Math.PI / 2, kind: 'reader' as const, look: 0 },
+  { pos: new THREE.Vector3(5.3, 0, 0.15), facing: -Math.PI / 2, kind: 'reader' as const, look: 1 },
+  { pos: new THREE.Vector3(5.3, 0, -1.35), facing: -Math.PI / 2, kind: 'sipper' as const, look: 2 },
+  { pos: new THREE.Vector3(-4.15, 0, 2.75), facing: 0.55, kind: 'reader' as const, look: 3 },
+];
+
+/**
+ * The side annex: a lean-to tin roof off the right wall sheltering a long
+ * table and two benches where the regulars read the paper over chaya.
+ */
+function buildAnnex(root: THREE.Object3D, trim: THREE.MeshToonMaterial) {
+  const g = group(root, undefined, undefined, 'annex');
+  const x0 = 3.3;
+  const x1 = 6.05;
+  const z0 = -2.35;
+  const z1 = 1.05;
+  const yIn = 3.25;
+  const yOut = 2.6;
+  const dark = toon(TONES.woodDark);
+  const wood = toon(TONES.woodLight);
+
+  // red-oxide floor slab
+  part(g, G.box(x1 - x0 + 0.1, 0.1, z1 - z0 + 0.1), toon(TONES.redOxide), { pos: [(x0 + x1) / 2, 0.05, (z0 + z1) / 2] });
+  // posts and beam on the open side
+  for (const z of [z0 + 0.1, (z0 + z1) / 2, z1 - 0.1]) part(g, G.box(0.13, yOut, 0.13), dark, { pos: [x1 - 0.12, yOut / 2, z] });
+  part(g, G.box(0.14, 0.14, z1 - z0), dark, { pos: [x1 - 0.12, yOut - 0.07, (z0 + z1) / 2] });
+
+  // corrugated lean-to roof sloping away from the shop
+  const len = Math.hypot(x1 - x0 + 0.3, yIn - yOut);
+  const slope = Math.atan2(yIn - yOut, x1 - x0 + 0.3);
+  const roof = group(g, [(x0 + x1 + 0.3) / 2, (yIn + yOut) / 2 + 0.05, (z0 + z1) / 2], [0, 0, -slope]);
+  const geo = new THREE.PlaneGeometry(len, z1 - z0 + 0.5, 1, 140);
+  const pos = geo.attributes.position as THREE.BufferAttribute;
+  for (let i = 0; i < pos.count; i++) pos.setZ(i, Math.sin((pos.getY(i) / 0.19) * Math.PI * 2) * 0.028);
+  geo.rotateX(-Math.PI / 2);
+  geo.computeVertexNormals();
+  const sheet = new THREE.Mesh(geo, toon('#A9533A', { side: THREE.DoubleSide }));
+  sheet.castShadow = true;
+  sheet.userData.noOutline = true;
+  roof.add(sheet);
+  part(roof, G.box(0.05, 0.16, z1 - z0 + 0.55), trim, { pos: [len / 2 + 0.02, -0.06, 0] });
+
+  // long table with chaya glasses, a plate of snacks and a little radio
+  const tx = (x0 + x1) / 2 + 0.05;
+  const tz = -0.55;
+  part(g, G.box(0.72, 0.06, 2.5), wood, { pos: [tx, 0.76, tz] });
+  for (const dz of [-1.1, 1.1]) for (const dx of [-0.28, 0.28]) part(g, G.box(0.06, 0.7, 0.06), dark, { pos: [tx + dx, 0.41, tz + dz] });
+  for (const bx of [3.95, 5.3]) {
+    part(g, G.box(0.38, 0.06, 2.5), wood, { pos: [bx, 0.47, tz] });
+    for (const dz of [-1.05, 1.05]) part(g, G.box(0.3, 0.42, 0.06), dark, { pos: [bx, 0.23, tz + dz] });
+  }
+  M.createTeaGlass(g, [tx - 0.15, 0.79, -1.2], 1);
+  M.createTeaGlass(g, [tx + 0.18, 0.79, 0.1], 1);
+  M.createTeaGlass(g, [tx + 0.15, 0.79, -1.45], 1, false);
+  const plate = group(g, [tx, 0.79, -0.5]);
+  part(plate, G.cyl(0.15, 0.12, 0.02, 20), toon(TONES.steel), { pos: [0, 0.01, 0] });
+  M.createPazhampori(plate, [-0.03, 0.05, 0.02], 0.4);
+  M.createVada(plate, [0.06, 0.04, -0.04]);
+  const radio = group(g, [tx - 0.05, 0.79, 0.65], [0, 0.4, 0]);
+  part(radio, G.box(0.3, 0.17, 0.1), toon('#7A2E3A'), { pos: [0, 0.085, 0] });
+  part(radio, G.cyl(0.045, 0.045, 0.02, 14), toon(PALETTE.cream), { pos: [0.07, 0.09, 0.055], rot: [Math.PI / 2, 0, 0], outline: false });
+  part(radio, G.box(0.1, 0.06, 0.02), toon(PALETTE.gold), { pos: [-0.07, 0.1, 0.055], outline: false });
+  limb(radio, [0.1, 0.17, 0], [0.18, 0.5, -0.02], 0.006, toon(TONES.steel));
+  addOutline(g);
 }

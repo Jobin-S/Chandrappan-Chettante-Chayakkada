@@ -22,10 +22,52 @@ const EYE_HEIGHT = 1.95;
 const FP_HOME = { x: -0.5, z: -0.05, yaw: 0.02, pitch: -0.17 };
 const FP_FOV = 72;
 const ORBIT_FOV = 44;
-/** Walkable floor inside the shop (x/z), and obstacles to push out of. */
-const FP_BOUNDS = { x0: -2.2, x1: 2.95, z0: -1.5, z1: 0.85 };
-const FP_BLOCKERS = [{ x0: 1.5, x1: 3.1, z0: -1.5, z1: -0.5 }];
-const WALK_SPEED = 2.2;
+/**
+ * Walkable area: the shop, the yard, the annex and the bus stop (but not the
+ * road). Boxes are obstacles you slide along; the shop is entered by the gap
+ * at the right end of the counter.
+ */
+const FP_BOUNDS = { x0: -11, x1: 9.5, z0: -3.3, z1: 4.3 };
+const BODY = 0.25;
+type Box = { x0: number; x1: number; z0: number; z1: number };
+const box = (x0: number, x1: number, z0: number, z1: number): Box => ({ x0, x1, z0, z1 });
+const around = (x: number, z: number, r: number) => box(x - r, x + r, z - r, z + r);
+const FP_BLOCKERS: Box[] = [
+  box(-3.32, -3.08, -2.6, 2.12), // left wall
+  box(3.08, 3.32, -2.6, 2.12), // right half-wall
+  box(-3.32, 3.32, -2.62, -2.28), // back wall
+  box(-3.2, 3.2, -2.3, -1.62), // sacks, drum, basket along the back
+  box(-3.2, 1.98, 1.06, 1.92), // counter
+  box(-3.2, -2.36, -2.25, 0.8), // hearth
+  box(1.6, 3.0, -1.4, -0.6), // prep table
+  box(3.7, 5.6, -1.9, 0.8), // annex table and benches
+  box(-8.9, -6.3, 2.35, 3.8), // bus shelter
+  box(-4.5, -3.8, 2.4, 3.1), // reader on the stool
+  box(-4.95, -4.45, 1.4, 1.9), // stool
+  box(-4.4, -3.4, -2.05, -0.4), // firewood
+  box(-3.1, -2.4, 3.15, 3.75), // menu board
+  box(-3.8, -3.3, 2.8, 3.3), // bucket
+  around(-5.1, 3.1, 0.5),
+  around(-6.4, 1.3, 0.5),
+  around(5.7, 3.4, 0.5),
+  around(6.2, -0.8, 0.5),
+  around(-6.6, -2.2, 0.3),
+  around(-7.8, 0.3, 0.3),
+  around(7.6, -2.6, 0.3),
+  around(8.4, 3.4, 0.3),
+];
+
+/** Floor height under a point: shop plinth, annex slab or the ground. */
+function groundAt(x: number, z: number): number {
+  if (x > -3.5 && x < 3.5 && z > -2.7 && z < 2.25) return 0.35;
+  if (x > 3.25 && x < 6.05 && z > -2.35 && z < 1.05) return 0.1;
+  return 0;
+}
+
+function blocked(x: number, z: number): boolean {
+  return FP_BLOCKERS.some((b) => x > b.x0 - BODY && x < b.x1 + BODY && z > b.z0 - BODY && z < b.z1 + BODY);
+}
+const WALK_SPEED = 2.6;
 
 interface Tween {
   t: number;
@@ -130,6 +172,18 @@ export class CameraDirector {
   /** World-space eye position in first person (for customers to look at). */
   get eye(): THREE.Vector3 {
     return this.fp.pos;
+  }
+
+  /** Facing (radians, 0 = toward the road). */
+  get yaw(): number {
+    return this.fp.yaw;
+  }
+
+  /** Put the player somewhere else (e.g. a free spot when joining a room). */
+  placeAt(x: number, z: number, yaw: number) {
+    this.fp.pos.set(x, groundAt(x, z) + EYE_HEIGHT, z);
+    this.fp.yaw = this.fp.yawGoal = yaw;
+    this.fp.pitch = this.fp.pitchGoal = FP_HOME.pitch;
   }
 
   setMode(mode: ViewMode, instant = false) {
@@ -243,16 +297,11 @@ export class CameraDirector {
     const dx = (Math.sin(yaw) * f - Math.cos(yaw) * s) * WALK_SPEED * dt;
     const dz = (Math.cos(yaw) * f + Math.sin(yaw) * s) * WALK_SPEED * dt;
     const p = this.fp.pos;
-    let nx = THREE.MathUtils.clamp(p.x + dx, FP_BOUNDS.x0, FP_BOUNDS.x1);
-    let nz = THREE.MathUtils.clamp(p.z + dz, FP_BOUNDS.z0, FP_BOUNDS.z1);
-    for (const b of FP_BLOCKERS) {
-      if (nx > b.x0 && nx < b.x1 && nz > b.z0 && nz < b.z1) {
-        if (!(p.x > b.x0 && p.x < b.x1)) nx = p.x;
-        if (!(p.z > b.z0 && p.z < b.z1)) nz = p.z;
-      }
-    }
-    p.x = nx;
-    p.z = nz;
+    // slide along obstacles: try each axis on its own
+    const nx = THREE.MathUtils.clamp(p.x + dx, FP_BOUNDS.x0, FP_BOUNDS.x1);
+    if (!blocked(nx, p.z)) p.x = nx;
+    const nz = THREE.MathUtils.clamp(p.z + dz, FP_BOUNDS.z0, FP_BOUNDS.z1);
+    if (!blocked(p.x, nz)) p.z = nz;
     this.walkPhase += dt * 9;
   }
 
@@ -281,6 +330,8 @@ export class CameraDirector {
       const moving = this.moving();
       if (moving) this.walk(dt);
       else this.walkPhase *= 0.85;
+      // step up onto the plinth / down to the yard smoothly
+      this.fp.pos.y = THREE.MathUtils.damp(this.fp.pos.y, groundAt(this.fp.pos.x, this.fp.pos.z) + EYE_HEIGHT, 12, dt);
       const k = Math.min(1, dt * 14);
       this.fp.yaw += (this.fp.yawGoal - this.fp.yaw) * k;
       this.fp.pitch += (this.fp.pitchGoal - this.fp.pitch) * k;

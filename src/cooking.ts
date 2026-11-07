@@ -5,6 +5,9 @@ import { CookMode, Recipe, Step, actionLabel, stepsFor } from './recipes';
  * timed steps run a timer that must finish before the next action.
  */
 
+export const BATCH_SIZES = [1, 3, 5] as const;
+const BATCH_TIME: Record<number, number> = { 1: 1, 3: 1.4, 5: 1.8 };
+
 export interface ActResult {
   ok: boolean;
   message: string;
@@ -21,8 +24,12 @@ export class CookingSession {
     readonly recipe: Recipe,
     readonly mode: CookMode,
     private speed = 1,
+    /** How many portions this batch makes (bulk cooking). */
+    readonly batch = 1,
   ) {
     this.steps = stepsFor(recipe, mode);
+    // bigger batches take a little longer, but far less than cooking them one by one
+    this.speed = speed / (BATCH_TIME[batch] ?? 1);
   }
 
   get station() {
